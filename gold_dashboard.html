@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RIMBA GOLD · Live Dashboard</title>
+<style>
+  :root {
+    --bg:       #0d0f14;
+    --bg2:      #141720;
+    --bg3:      #1c2030;
+    --border:   #262d40;
+    --gold:     #f5c842;
+    --gold2:    #e0a820;
+    --green:    #2ecc71;
+    --red:      #e74c3c;
+    --orange:   #f39c12;
+    --blue:     #3498db;
+    --purple:   #9b59b6;
+    --text:     #e8eaf0;
+    --muted:    #7a8299;
+    --supply:   #e74c3c;
+    --demand:   #2ecc71;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ────────────────────────────────────────────── */
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { color: var(--gold); font-size: 18px; font-weight: bold; letter-spacing: 2px; }
+  .version { color: var(--muted); font-size: 11px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+    display: inline-block; margin-right: 6px;
+  }
+  .status-dot.error { background: var(--red); animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+  .clock { color: var(--gold); font-size: 14px; font-weight: bold; }
+
+  /* ── Grid ──────────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: 340px 1fr 300px;
+    grid-template-rows: auto auto auto;
+    gap: 12px;
+    padding: 12px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .card-title {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+
+  /* ── Session card ──────────────────────────────────────── */
+  .session-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .session-pill {
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .session-pill.active {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(245, 200, 66, 0.1);
+  }
+  .session-pill.overlap {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(46, 204, 113, 0.1);
+  }
+  .vol-bar-wrap { margin-top: 8px; }
+  .vol-bar-bg {
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .vol-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold2), var(--gold));
+    border-radius: 3px;
+    transition: width 0.5s;
+  }
+
+  /* ── Position card ─────────────────────────────────────── */
+  .pos-direction {
+    font-size: 22px;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  .pos-direction.buy  { color: var(--green); }
+  .pos-direction.sell { color: var(--red); }
+  .pos-direction.none { color: var(--muted); }
+  .pos-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .pos-label { color: var(--muted); }
+  .pos-val   { color: var(--text); font-weight: bold; }
+  .pos-val.green { color: var(--green); }
+  .pos-val.red   { color: var(--red); }
+
+  /* ── TP Ladder ─────────────────────────────────────────── */
+  .tp-ladder { margin-top: 10px; }
+  .tp-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .tp-label { width: 36px; color: var(--muted); font-size: 11px; }
+  .tp-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: var(--bg3);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .tp-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--border);
+    transition: width 0.4s, background 0.4s;
+  }
+  .tp-bar-fill.hit    { background: var(--green); }
+  .tp-bar-fill.next   { background: var(--gold);  }
+  .tp-price { width: 70px; text-align: right; font-size: 11px; color: var(--text); }
+
+  /* ── Zone map ──────────────────────────────────────────── */
+  .zone-list { max-height: 320px; overflow-y: auto; }
+  .zone-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .zone-badge {
+    width: 6px;
+    height: 32px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .zone-badge.supply { background: var(--supply); }
+  .zone-badge.demand { background: var(--demand); }
+  .zone-info { flex: 1; }
+  .zone-range { font-size: 12px; color: var(--text); }
+  .zone-meta  { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .zone-active { color: var(--gold); font-size: 10px; }
+
+  /* ── Performance ───────────────────────────────────────── */
+  .perf-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .kpi {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .kpi-val  { font-size: 20px; font-weight: bold; color: var(--gold); }
+  .kpi-val.green { color: var(--green); }
+  .kpi-val.red   { color: var(--red); }
+  .kpi-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Equity curve ──────────────────────────────────────── */
+  .chart-wrap { position: relative; height: 120px; }
+  canvas { width: 100% !important; height: 100% !important; }
+
+  /* ── TP hit bar ────────────────────────────────────────── */
+  .tp-hist {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .tp-col { text-align: center; }
+  .tp-pct-bar-wrap {
+    height: 60px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .tp-pct-bar {
+    width: 24px;
+    border-radius: 3px 3px 0 0;
+    background: var(--gold2);
+    min-height: 2px;
+    transition: height 0.5s;
+  }
+  .tp-pct-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .tp-pct-val   { font-size: 11px; color: var(--gold); font-weight: bold; }
+
+  /* ── DD card ───────────────────────────────────────────── */
+  .dd-meter {
+    margin: 8px 0;
+    height: 10px;
+    background: var(--bg3);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .dd-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.5s, background 0.5s;
+  }
+  .dd-fill.safe   { background: var(--green); }
+  .dd-fill.warn1  { background: var(--orange); }
+  .dd-fill.warn2  { background: var(--red); }
+  .dd-fill.halted { background: #8e44ad; }
+
+  /* ── Misc ──────────────────────────────────────────────── */
+  .tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 6px;
+  }
+  .tag.live    { background: rgba(46,204,113,0.2); color: var(--green); border: 1px solid var(--green); }
+  .tag.halted  { background: rgba(231,76,60,0.2);  color: var(--red);   border: 1px solid var(--red); }
+  .tag.dry     { background: rgba(52,152,219,0.2); color: var(--blue);  border: 1px solid var(--blue); }
+  .last-update { color: var(--muted); font-size: 10px; text-align: right; margin-top: 6px; }
+  .error-banner {
+    background: rgba(231,76,60,0.1);
+    border: 1px solid var(--red);
+    color: var(--red);
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 0;
+    font-size: 11px;
+    display: none;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: var(--bg2); }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Column spans */
+  .span2 { grid-column: span 2; }
+  .span3 { grid-column: span 3; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">⚡ RIMBA GOLD</div>
+    <div class="version">v<span id="hdr-ver">1.0.0</span> · XAUUSD</div>
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text" style="font-size:11px;color:var(--muted)">connecting…</span>
+  </div>
+  <div class="clock" id="utc-clock">--:--:-- UTC</div>
+</div>
+
+<div class="grid">
+
+  <!-- ── Col 1: Session + Position ─────────────────────────── -->
+
+  <!-- Session Card -->
+  <div class="card">
+    <div class="card-title">Active Session</div>
+    <div class="session-grid">
+      <div class="session-pill" id="sess-asia">ASIA</div>
+      <div class="session-pill" id="sess-london">LONDON</div>
+      <div class="session-pill" id="sess-ny">NY</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+      <span id="sess-label">—</span>
+      <span id="sess-tfs">—</span>
+    </div>
+    <div class="vol-bar-wrap" style="margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:3px;">
+        <span>Volatility Score</span>
+        <span id="vol-score">0.00</span>
+      </div>
+      <div class="vol-bar-bg"><div class="vol-bar-fill" id="vol-bar" style="width:0%"></div></div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted);" id="mins-to-close">—</div>
+  </div>
+
+  <!-- Position Card -->
+  <div class="card">
+    <div class="card-title">Active Position</div>
+    <div class="pos-direction none" id="pos-dir">FLAT</div>
+    <div id="pos-details">
+      <div class="pos-row"><span class="pos-label">Ticket</span><span class="pos-val" id="pos-ticket">—</span></div>
+      <div class="pos-row"><span class="pos-label">Entry</span><span class="pos-val" id="pos-entry">—</span></div>
+      <div class="pos-row"><span class="pos-label">SL</span><span class="pos-val red" id="pos-sl">—</span></div>
+      <div class="pos-row"><span class="pos-label">Lot</span><span class="pos-val" id="pos-lot">—</span></div>
+      <div class="pos-row"><span class="pos-label">Conv.</span><span class="pos-val" id="pos-conv">—</span></div>
+      <div class="pos-row"><span class="pos-label">Session</span><span class="pos-val" id="pos-sess">—</span></div>
+      <div class="pos-row"><span class="pos-label">Current R</span><span class="pos-val" id="pos-r">—</span></div>
+    </div>
+    <!-- TP Ladder -->
+    <div class="tp-ladder" id="tp-ladder"></div>
+  </div>
+
+  <!-- Drawdown Card -->
+  <div class="card">
+    <div class="card-title">Risk Guard</div>
+    <div class="pos-row"><span class="pos-label">Peak Equity</span><span class="pos-val" id="dd-peak">—</span></div>
+    <div class="pos-row"><span class="pos-label">Current</span><span class="pos-val" id="dd-equity">—</span></div>
+    <div class="pos-row"><span class="pos-label">Drawdown</span><span class="pos-val" id="dd-pct">—</span></div>
+    <div class="dd-meter"><div class="dd-fill safe" id="dd-bar" style="width:0%"></div></div>
+    <div class="pos-row"><span class="pos-label">Lot Scale</span><span class="pos-val" id="dd-scale">1.00×</span></div>
+    <div class="pos-row"><span class="pos-label">Daily P/L</span><span class="pos-val" id="dd-daily">—</span></div>
+    <div id="dd-status" style="margin-top:8px;font-size:11px;color:var(--green)">🟢 ACTIVE</div>
+  </div>
+
+  <!-- ── Col 2-3: Zone map + Perf ───────────────────────────── -->
+
+  <!-- Zone Map -->
+  <div class="card span2">
+    <div class="card-title">Zone Registry <span id="zone-count" style="color:var(--gold)">0 zones</span></div>
+    <div class="zone-list scrollbar-thin" id="zone-list">
+      <div style="color:var(--muted);padding:20px;text-align:center;">Loading zones…</div>
+    </div>
+  </div>
+
+  <!-- Performance Sidebar -->
+  <div class="card">
+    <div class="card-title">Today's Performance</div>
+    <div class="perf-grid">
+      <div class="kpi"><div class="kpi-val" id="kpi-trades">0</div><div class="kpi-label">Trades</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpi-wr">0%</div><div class="kpi-label">Win Rate</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpi-pnl">+0</div><div class="kpi-label">P/L pts</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpi-flips">0</div><div class="kpi-label">Flips</div></div>
+    </div>
+    <div class="card-title" style="margin-top:8px;">TP Hit Distribution</div>
+    <div class="tp-hist" id="tp-hist"></div>
+  </div>
+
+  <!-- Equity Curve -->
+  <div class="card span2">
+    <div class="card-title">Equity Curve (pts, cumulative)</div>
+    <div class="chart-wrap"><canvas id="equity-chart"></canvas></div>
+  </div>
+
+  <!-- All-time stats -->
+  <div class="card">
+    <div class="card-title">All-Time Stats</div>
+    <div class="pos-row"><span class="pos-label">Trades</span><span class="pos-val" id="at-trades">—</span></div>
+    <div class="pos-row"><span class="pos-label">Win Rate</span><span class="pos-val" id="at-wr">—</span></div>
+    <div class="pos-row"><span class="pos-label">Total pts</span><span class="pos-val" id="at-pnl">—</span></div>
+    <div class="pos-row"><span class="pos-label">Avg pts</span><span class="pos-val" id="at-avg">—</span></div>
+    <div class="pos-row"><span class="pos-label">Calmar</span><span class="pos-val" id="at-calmar">—</span></div>
+  </div>
+
+</div>
+
+<div class="last-update" style="padding:0 12px 12px;">
+  Last updated: <span id="last-ts">—</span>
+</div>
+
+<script>
+// ── Config ─────────────────────────────────────────────────
+const API_BASE    = '';   // same origin
+const POLL_MS     = 5000; // 5-second polling
+
+// ── UTC Clock ──────────────────────────────────────────────
+function tickClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('utc-clock').textContent =
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ── Fetch helpers ───────────────────────────────────────────
+async function apiFetch(path) {
+  try {
+    const r = await fetch(API_BASE + path);
+    if (!r.ok) throw new Error(r.statusText);
+    return await r.json();
+  } catch(e) {
+    console.error('API error', path, e);
+    return null;
+  }
+}
+
+function setStatus(ok) {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  dot.className  = 'status-dot' + (ok ? '' : ' error');
+  text.textContent = ok ? 'LIVE' : 'DISCONNECTED';
+  text.style.color = ok ? 'var(--green)' : 'var(--red)';
+}
+
+// ── Render: Session ─────────────────────────────────────────
+function renderSession(data) {
+  if (!data) return;
+  const s = data.session;
+  const active = s.active_sessions || [];
+
+  ['asia','london','ny'].forEach(id => {
+    const el = document.getElementById('sess-'+id);
+    const name = id.toUpperCase();
+    const isActive = active.includes(name);
+    el.className = 'session-pill' + (s.is_overlap && isActive ? ' overlap' : isActive ? ' active' : '');
+  });
+
+  document.getElementById('sess-label').textContent = s.session_label || 'CLOSED';
+  document.getElementById('sess-tfs').textContent   = (s.permitted_timeframes||[]).join(' · ') || '—';
+
+  const vol = s.volatility_score || 0;
+  document.getElementById('vol-score').textContent  = vol.toFixed(2);
+  document.getElementById('vol-bar').style.width    = Math.min(vol / 1.5 * 100, 100) + '%';
+
+  document.getElementById('hdr-ver').textContent = data.version || '1.0.0';
+}
+
+// ── Render: Position ────────────────────────────────────────
+function renderPosition(data) {
+  if (!data) return;
+  const pos = data.position || {};
+  const dirEl = document.getElementById('pos-dir');
+
+  if (!pos.is_active) {
+    dirEl.textContent = 'FLAT';
+    dirEl.className   = 'pos-direction none';
+    // Clear TP ladder
+    document.getElementById('tp-ladder').innerHTML = '';
+    ['ticket','entry','sl','lot','conv','sess','r'].forEach(k =>
+      document.getElementById('pos-'+k).textContent = '—'
+    );
+    return;
+  }
+
+  dirEl.textContent = pos.direction || '—';
+  dirEl.className   = 'pos-direction ' + (pos.direction||'').toLowerCase();
+
+  document.getElementById('pos-ticket').textContent = pos.ticket || '—';
+  document.getElementById('pos-entry').textContent  = pos.open_price?.toFixed(2) || '—';
+  document.getElementById('pos-sl').textContent     = pos.sl_price?.toFixed(2) || '—';
+  document.getElementById('pos-lot').textContent    = pos.lot_size?.toFixed(2) || '—';
+  document.getElementById('pos-conv').textContent   = pos.conviction ? (pos.conviction*100).toFixed(1)+'%' : '—';
+  document.getElementById('pos-sess').textContent   = pos.session || '—';
+
+  const r = pos.current_r || 0;
+  const rEl = document.getElementById('pos-r');
+  rEl.textContent = (r >= 0 ? '+' : '') + r.toFixed(2) + 'R';
+  rEl.className   = 'pos-val ' + (r >= 0 ? 'green' : 'red');
+
+  // TP Ladder
+  const tps       = pos.tp_prices || [];
+  const tpsHit    = pos.tps_hit   || [];
+  const entry     = pos.open_price || 0;
+  const sl        = pos.sl_price   || 0;
+  const maxDist   = tps.length > 0 ? Math.abs(tps[tps.length-1] - entry) : 1;
+  const isBuy     = pos.direction === 'BUY';
+
+  let html = '';
+  tps.forEach((tp, i) => {
+    const hit     = tpsHit[i] || false;
+    const isNext  = !hit && !tpsHit.slice(0, i).includes(false) ? false :
+                    !tpsHit.slice(0,i).every(Boolean) ? false :
+                    !hit;
+    const pct     = Math.min(Math.abs(tp - entry) / maxDist * 100, 100);
+    const cls     = hit ? 'hit' : (i === tpsHit.indexOf(false) ? 'next' : '');
+    html += `
+      <div class="tp-row">
+        <span class="tp-label">TP${i+1}</span>
+        <div class="tp-bar-bg"><div class="tp-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="tp-price">${tp.toFixed(2)}</span>
+      </div>`;
+  });
+  // SL row
+  const slPct = Math.min(Math.abs(sl - entry) / maxDist * 100, 100);
+  html += `<div class="tp-row">
+    <span class="tp-label" style="color:var(--red)">SL</span>
+    <div class="tp-bar-bg"><div class="tp-bar-fill" style="width:${slPct}%;background:var(--red)"></div></div>
+    <span class="tp-price" style="color:var(--red)">${sl.toFixed(2)}</span>
+  </div>`;
+  document.getElementById('tp-ladder').innerHTML = html;
+}
+
+// ── Render: Zones ───────────────────────────────────────────
+function renderZones(data) {
+  if (!data) return;
+  const zones = data.zones || [];
+  document.getElementById('zone-count').textContent = zones.length + ' zones';
+
+  if (zones.length === 0) {
+    document.getElementById('zone-list').innerHTML =
+      '<div style="color:var(--muted);padding:20px;text-align:center;">No active zones detected</div>';
+    return;
+  }
+
+  const sorted = [...zones].sort((a,b) => b.touches - a.touches);
+  let html = '';
+  sorted.forEach(z => {
+    const type  = z.type.toLowerCase();
+    const color = type === 'supply' ? 'supply' : 'demand';
+    const activeBadge = z.is_active ? '<span class="zone-active">● IN TRADE</span>' : '';
+    const W = z.width?.toFixed(2) || '?';
+    html += `
+      <div class="zone-item">
+        <div class="zone-badge ${color}"></div>
+        <div class="zone-info">
+          <div class="zone-range">${z.low.toFixed(2)} – ${z.high.toFixed(2)}
+            <span style="color:var(--muted);font-size:10px"> W=${W}</span>
+            ${activeBadge}
+          </div>
+          <div class="zone-meta">${z.type} · ${z.timeframe} · ${z.touches} touches · visited ${z.visit_count}×</div>
+        </div>
+      </div>`;
+  });
+  document.getElementById('zone-list').innerHTML = html;
+}
+
+// ── Render: Performance ─────────────────────────────────────
+function renderPerf(data) {
+  if (!data) return;
+  const today = data.today || {};
+  const all   = data.all_time || {};
+
+  // Today KPIs
+  document.getElementById('kpi-trades').textContent = today.trades ?? 0;
+  const wr = ((today.win_rate||0)*100).toFixed(0)+'%';
+  const wrEl = document.getElementById('kpi-wr');
+  wrEl.textContent = wr;
+  wrEl.className = 'kpi-val ' + ((today.win_rate||0)>=0.5 ? 'green' : 'red');
+
+  const pnl = today.total_pnl || 0;
+  const pnlEl = document.getElementById('kpi-pnl');
+  pnlEl.textContent = (pnl>=0?'+':'')+pnl.toFixed(1);
+  pnlEl.className = 'kpi-val ' + (pnl>=0 ? 'green' : 'red');
+  document.getElementById('kpi-flips').textContent = today.flips ?? 0;
+
+  // TP histogram
+  const tpRates = all.tp_rates || [0,0,0,0,0];
+  const maxRate  = Math.max(...tpRates, 0.01);
+  let histHtml = '';
+  tpRates.forEach((rate,i) => {
+    const barH = Math.round(rate / maxRate * 55);
+    histHtml += `
+      <div class="tp-col">
+        <div class="tp-pct-bar-wrap">
+          <div class="tp-pct-bar" style="height:${barH}px"></div>
+        </div>
+        <div class="tp-pct-val">${(rate*100).toFixed(0)}%</div>
+        <div class="tp-pct-label">TP${i+1}</div>
+      </div>`;
+  });
+  document.getElementById('tp-hist').innerHTML = histHtml;
+
+  // All-time
+  document.getElementById('at-trades').textContent = all.trades ?? '—';
+  document.getElementById('at-wr').textContent     = all.win_rate ? (all.win_rate*100).toFixed(1)+'%' : '—';
+
+  const atPnl = all.total_pnl || 0;
+  const atEl  = document.getElementById('at-pnl');
+  atEl.textContent = (atPnl>=0?'+':'')+atPnl.toFixed(1);
+  atEl.className   = 'pos-val ' + (atPnl>=0 ? 'green' : 'red');
+
+  document.getElementById('at-avg').textContent    = all.avg_pnl != null ? (all.avg_pnl>=0?'+':'')+all.avg_pnl.toFixed(2) : '—';
+  document.getElementById('at-calmar').textContent = all.calmar != null ? all.calmar.toFixed(3) : '—';
+
+  // Equity curve
+  renderEquityCurve(data.equity_curve || []);
+
+  document.getElementById('last-ts').textContent = data.timestamp
+    ? new Date(data.timestamp).toLocaleTimeString() : '—';
+}
+
+// ── Render: Drawdown ────────────────────────────────────────
+function renderDrawdown(data) {
+  if (!data) return;
+  document.getElementById('dd-peak').textContent   = data.peak_equity?.toFixed(2) || '—';
+  document.getElementById('dd-equity').textContent = data.current_equity?.toFixed(2) || '—';
+
+  const dd  = data.current_drawdown || 0;
+  const pct = (dd*100).toFixed(2)+'%';
+  const ddPctEl = document.getElementById('dd-pct');
+  ddPctEl.textContent = pct;
+  ddPctEl.className   = 'pos-val ' + (dd < 0.05 ? 'green' : dd < 0.10 ? '' : 'red');
+
+  const bar = document.getElementById('dd-bar');
+  bar.style.width = Math.min(dd*100/15*100, 100)+'%';
+  bar.className   = 'dd-fill ' + (dd < 0.05 ? 'safe' : dd < 0.10 ? 'warn1' : dd < 0.15 ? 'warn2' : 'halted');
+
+  const scale = data.lot_scale_factor || 1;
+  document.getElementById('dd-scale').textContent = scale.toFixed(2)+'×';
+  document.getElementById('dd-scale').style.color = scale < 1 ? 'var(--orange)' : 'var(--green)';
+
+  const daily = data.daily_pnl_usd || 0;
+  const dEl   = document.getElementById('dd-daily');
+  dEl.textContent = (daily>=0?'+':'')+'$'+daily.toFixed(2);
+  dEl.className   = 'pos-val ' + (daily>=0 ? 'green' : 'red');
+
+  const statusEl = document.getElementById('dd-status');
+  if (data.is_halted) {
+    statusEl.textContent = '🔴 HALTED — ' + (data.halt_reason||'');
+    statusEl.style.color = 'var(--red)';
+  } else if (data.daily_loss_blocked) {
+    statusEl.textContent = '🟡 DAILY LIMIT HIT';
+    statusEl.style.color = 'var(--orange)';
+  } else if (scale < 1) {
+    statusEl.textContent = `🟠 SCALED (${(scale*100).toFixed(0)}%)`;
+    statusEl.style.color = 'var(--orange)';
+  } else {
+    statusEl.textContent = '🟢 ACTIVE';
+    statusEl.style.color = 'var(--green)';
+  }
+}
+
+// ── Equity Curve Canvas ─────────────────────────────────────
+function renderEquityCurve(curve) {
+  const canvas = document.getElementById('equity-chart');
+  if (!canvas || !canvas.getContext) return;
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.offsetWidth  || 600;
+  const H = canvas.offsetHeight || 120;
+  canvas.width  = W;
+  canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!curve || curve.length < 2) {
+    ctx.fillStyle = '#7a8299';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('No trade history yet', W/2, H/2);
+    return;
+  }
+
+  const pts    = curve.map(p => p.equity_pts);
+  const minPts = Math.min(...pts);
+  const maxPts = Math.max(...pts);
+  const range  = maxPts - minPts || 1;
+  const pad    = { t:10, r:10, b:20, l:48 };
+  const cW     = W - pad.l - pad.r;
+  const cH     = H - pad.t - pad.b;
+
+  // Grid lines
+  ctx.strokeStyle = '#262d40';
+  ctx.lineWidth   = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (cH * i / 4);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y);
+    ctx.stroke();
+    const val = maxPts - (range * i / 4);
+    ctx.fillStyle = '#7a8299';
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toFixed(0), pad.l - 4, y + 3);
+  }
+
+  // Zero line
+  const zeroY = pad.t + cH * (1 - (0 - minPts) / range);
+  ctx.strokeStyle = '#3a4255';
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, zeroY); ctx.lineTo(W - pad.r, zeroY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Area fill
+  const toXY = (i, v) => ({
+    x: pad.l + (i / (pts.length - 1)) * cW,
+    y: pad.t + cH * (1 - (v - minPts) / range),
+  });
+
+  const lastPt = toXY(pts.length - 1, pts[pts.length-1]);
+  const isProfit = pts[pts.length-1] >= 0;
+
+  ctx.beginPath();
+  pts.forEach((v, i) => {
+    const p = toXY(i, v);
+    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+  });
+  ctx.lineTo(lastPt.x, pad.t + cH);
+  ctx.lineTo(pad.l, pad.t + cH);
+  ctx.closePath();
+  ctx.fillStyle = isProfit ? 'rgba(46,204,113,0.12)' : 'rgba(231,76,60,0.12)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((v, i) => {
+    const p = toXY(i, v);
+    i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+  });
+  ctx.strokeStyle = isProfit ? '#2ecc71' : '#e74c3c';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Last point dot
+  ctx.beginPath();
+  ctx.arc(lastPt.x, lastPt.y, 3, 0, Math.PI*2);
+  ctx.fillStyle = isProfit ? '#2ecc71' : '#e74c3c';
+  ctx.fill();
+}
+
+// ── Main Poll Loop ──────────────────────────────────────────
+async function pollAll() {
+  const [stateData, zoneData, perfData, ddData] = await Promise.all([
+    apiFetch('/api/state'),
+    apiFetch('/api/zones'),
+    apiFetch('/api/perf'),
+    apiFetch('/api/dd'),
+  ]);
+
+  const ok = !!(stateData || zoneData);
+  setStatus(ok);
+
+  renderSession(stateData);
+  renderPosition(stateData);
+  renderZones(zoneData);
+  renderPerf(perfData);
+  renderDrawdown(ddData);
+}
+
+// Start
+pollAll();
+setInterval(pollAll, POLL_MS);
+</script>
+</body>
+</html>

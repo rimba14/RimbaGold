@@ -1,0 +1,119 @@
+import logging
+import requests
+import MetaTrader5 as mt5
+from datetime import datetime, timezone
+
+logger = logging.getLogger("CapitalWall")
+
+class TradeRejected(Exception):
+    """Custom exception raised when a trade is rejected by the CapitalWall constitution gates."""
+    pass
+
+class CapitalWall:
+    def __init__(self, risk_agent_url="http://localhost:8001/check_trade"):
+        self.risk_agent_url = risk_agent_url
+
+    def check_risk_agent(self, signal, lot_size, price):
+        """
+        Wall 4: Risk Agent Circuit Breaker (Fail-Closed)
+        Locate check_risk_agent(self, signal, lot_size, price)
+        Change the base except Exception as e: block to fail closed (raise TradeRejected)
+        """
+        incoming_notional = lot_size * price
+        payload = {
+            "symbol": signal.symbol,
+            "size_usd": incoming_notional,
+            "leverage": 5.0,
+            "xgb_p": getattr(signal, 'xgb_p', 0.5),
+            "ddqn_p": getattr(signal, 'ddqn_p', 0.5)
+        }
+        try:
+            resp = requests.post(self.risk_agent_url, json=payload, timeout=2.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                if not data.get("allow"):
+                    raise TradeRejected(f"[WALL4-FAIL] Risk Agent Veto: {data.get('reason')}")
+                logger.info(f"[{signal.symbol}] Risk Agent authorized trade successfully.")
+            elif resp.status_code == 403:
+                err_reason = resp.json().get("detail", "Risk Agent Veto")
+                raise TradeRejected(f"[WALL4-FAIL] Risk Agent 403 VETO: {err_reason}")
+            else:
+                raise TradeRejected(f"[WALL4-FAIL] Risk Agent returned unexpected status: {resp.status_code}")
+        except TradeRejected:
+            raise
+        except Exception as e:
+            # Tripped circuit breaker - Fail Closed!
+            raise TradeRejected(f"[WALL4-FAIL] Risk Agent circuit breaker tripped: {e}. Trade aborted.")
+
+    def check_event_horizon_blackout(self, signal):
+        """
+        Wall 5: Ex-Ante Macro Blackout
+        Locate check_event_horizon_blackout(self, signal)
+        Ensures no new entries are scaled down or allowed when a Tier-1 event is within 24 hours.
+        """
+        print(f"[DEBUG WALL5] signal={signal} override_lot={getattr(signal, 'override_lot', 'MISSING')}")
+        if getattr(signal, 'override_lot', 0.0) is not None and getattr(signal, 'override_lot', 0.0) > 0.0:
+            return  # Bypass macro check for manual override
+            
+        from agents.risk_agent import check_upcoming_tier1_events
+        
+        has_event, event_desc = check_upcoming_tier1_events(signal.symbol, threshold_hours=24.0)
+        if has_event:
+            raise TradeRejected(f"[WALL5-FAIL] Tier-1 event within 24h. Ex-Ante Blackout active. (Event: {event_desc})")
+
+    def check_monte_carlo_gate(self, signal):
+        """
+        CONSTRAINT 3: MANDATORY PRE-DEPLOYMENT MONTE CARLO TESTING
+        """
+        import json
+        from pathlib import Path
+        mc_path = Path("C:/Sentinel_Project/data/monte_carlo_gate_status.json")
+        if mc_path.exists():
+            try:
+                with open(mc_path, "r") as f:
+                    mc_data = json.load(f)
+                if not mc_data.get("passed", False):
+                    raise TradeRejected(f"[MC-GATE-FAIL] Strategy failed Monte Carlo Stress Simulator: {mc_data}")
+            except TradeRejected:
+                raise
+            except Exception as e:
+                logger.warning(f"Failed to read MC gate status: {e}")
+
+    def run(self, signal, lot_size, price):
+        """
+        Wall Run Pipeline: Evaluates all weekend, blackout, margin, and Risk Agent checks.
+        Removes the scale multiplication and returns the unmodified lot_size if checks survive.
+        """
+        # 0. Daily Rollover Blackout (23:55 to 00:15 Broker Time)
+        tick = mt5.symbol_info_tick(signal.symbol)
+        if tick:
+            dt = datetime.fromtimestamp(tick.time, timezone.utc)
+            if (dt.hour == 23 and dt.minute >= 55) or (dt.hour == 0 and dt.minute <= 15):
+                raise TradeRejected(f"[WALL5-FAIL] Rollover Liquidity Void: Trade rejected during daily rollover blackout (23:55 - 00:15 Broker Time).")
+
+        # 1. Weekend Blackout Gate
+        from fastapi_sniper import is_weekend_blackout
+        if is_weekend_blackout(signal.symbol):
+            raise TradeRejected(f"[WALL5-FAIL] Weekend Blackout active for {signal.symbol}.")
+
+        # 2. Margin Pre-Validation
+        if getattr(signal, 'override_lot', 0.0) is None or getattr(signal, 'override_lot', 0.0) <= 0.0:
+            acc = mt5.account_info()
+            if acc:
+                if acc.margin_level > 0 and acc.margin_level < 200.0:
+                    raise TradeRejected(f"[WALL5-FAIL] Margin level too low ({acc.margin_level:.1f}%).")
+
+        # 3. Call check_event_horizon_blackout as a hard gate
+        self.check_event_horizon_blackout(signal)
+
+        # 3b. Call Monte Carlo Stress Simulator Gate
+        self.check_monte_carlo_gate(signal)
+
+        # 4. Call check_risk_agent check
+        if getattr(signal, 'override_lot', 0.0) <= 0.0:
+            self.check_risk_agent(signal, lot_size, price)
+        else:
+            print("[DEBUG] Bypassing check_risk_agent due to manual override")
+
+        # 5. Return unmodified lot_size if everything passes
+        return lot_size

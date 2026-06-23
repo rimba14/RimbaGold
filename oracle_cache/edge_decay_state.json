@@ -1,0 +1,13 @@
+{
+    "timestamp": "2026-06-22T15:37:33.902257+00:00",
+    "master_version": "v30.98",
+    "global_status": "HARD_BREACH",
+    "module_tier": {
+        "Directive_Meridian": "HARD_BREACH"
+    },
+    "agent_tier": {
+        "MixTS_v1": "QUARANTINED",
+        "TimesNet_Oracle": "ACTIVE"
+    },
+    "diagnosis": "REGIME_SHIFT"
+}

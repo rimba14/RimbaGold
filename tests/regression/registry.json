@@ -1,0 +1,82 @@
+[
+  {
+    "Incident_ID": "INC-001",
+    "Version_Range": "<=v23.11",
+    "Module_Involved": "Legacy Loops / Oxford DDQN",
+    "Failing_Condition": "The Ghost Version Leak (v23.11 resurfacing from legacy loops).",
+    "Applied_Fix": "Decommissioned legacy loops and ensured strict version tagging in Director routing.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-002",
+    "Version_Range": "v20-v29",
+    "Module_Involved": "Thesis Decay Exits",
+    "Failing_Condition": "Thesis Decay Exits firing prematurely on Swing holds due to un-smoothed signals.",
+    "Applied_Fix": "Implemented signal smoothing and disabled premature firing on Swing duration holds.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-003",
+    "Version_Range": "v30",
+    "Module_Involved": "pre_execution_gate.py / tp_placement_engine",
+    "Failing_Condition": "RANGE Regime TP/SL inversion (placing limits inside the broker spread).",
+    "Applied_Fix": "Enforced Absolute Minimum Distance limits to prevent TP/SL being placed within or too close to the spread.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-004",
+    "Version_Range": "v30",
+    "Module_Involved": "vantage_execute.py",
+    "Failing_Condition": "Synthetic/Validation data leaking into the live vantage_execute.py routing layer.",
+    "Applied_Fix": "Hardcoded isolation of synthetic testing channels and directories from live vantage_execute execution vectors.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-005",
+    "Version_Range": "v31",
+    "Module_Involved": "sentinel_slow_loop.py",
+    "Failing_Condition": "Uninitialized Oracles (e.g., DDQN) contributing default P=0.5 scores to the MoE consensus. (UnboundLocalError: cannot access local variable 'ddqn_p')",
+    "Applied_Fix": "Explicitly initialize DDQN bounds early and raise graceful degradation errors on uninitialized oracle scores.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-006",
+    "Version_Range": "v32",
+    "Module_Involved": "pre_execution_gate.py",
+    "Failing_Condition": "Stop-Loss mismatch (Dollar-bar ATR vs D1 Time-bar ATR).",
+    "Applied_Fix": "Standardized ATR extraction to strictly fetch and apply D1 Time-bar ATR for Stop-Loss Floors.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-007",
+    "Version_Range": "v33",
+    "Module_Involved": "risk_agent / logging",
+    "Failing_Condition": "Float truncation/rounding in logging layers feeding back into active scaling math.",
+    "Applied_Fix": "Decoupled visual logging representations from internal float calculations to preserve precision.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-008",
+    "Version_Range": "v34",
+    "Module_Involved": "pre_execution_gate.py",
+    "Failing_Condition": "The 'Measurability Gap' cluster breach (MAX_SAME_DIRECTION_PER_CLUSTER ignored).",
+    "Applied_Fix": "Added GATE-0 same_direction_cluster logic to limit same-direction positions strictly to 1 per cluster.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-009",
+    "Version_Range": "v35-v37",
+    "Module_Involved": "pre_execution_gate.py",
+    "Failing_Condition": "MT5 Error 10016 (TRADE_RETCODE_INVALID_STOPS) due to microscopic stop distances.",
+    "Applied_Fix": "Enforced 3.5x D1 ATR absolute Stop-Loss Distance Floor before execution.",
+    "Current_Status": "Fixed"
+  },
+  {
+    "Incident_ID": "INC-010",
+    "Version_Range": "v37-v38",
+    "Module_Involved": "apply_zeta_all.py",
+    "Failing_Condition": "Binance Error -4130 / MT5 10017 Open Stop or Take Profit with closePosition existing.",
+    "Applied_Fix": "Replaced closePosition=True conditional parameters with reduceOnly=True for bracket orders.",
+    "Current_Status": "Fixed"
+  }
+]
