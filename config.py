@@ -20,8 +20,10 @@ MIN_ZONE_TOUCHES  = 2                # Valid criteria filter
 ZONE_MAX_AGE_BARS = {"M1": 240, "M5": 96, "M15": 48}
 
 # Zone width boundaries expressed as multipliers of D1 ATR
-ZONE_MIN_W_ATR   = 0.008             # Filter out lower technical noise
-ZONE_MAX_W_ATR   = 0.18              # Filter out macroscopic imbalances
+ZONE_MIN_W_ATR   = 0.15              # Prevents micro-clusters from registering as zones
+ZONE_MAX_W_ATR   = 0.35              # Accommodates true multi-bar institutional zones
+FLIP_COOLDOWN_SEC    = 1800          # Minimum 30-minute lock to prevent rapid chattering
+TREND_FILTER_PERIOD  = 50            # Lookback window for trend identification
 
 # ── Mathematical Risk & Scale-Out Rules ──────────────────────
 TP_MULTIPLES     = [0.5, 1.0, 2.0, 4.0, 8.0]  # W Multipliers from outer boundary

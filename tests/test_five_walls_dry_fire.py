@@ -42,44 +42,46 @@ test_cases = [
     ),
 ]
 
-print("=== FIVE WALLS DRY FIRE TEST ===\n")
-all_pass = True
+if __name__ == "__main__":
+    print("=== FIVE WALLS DRY FIRE TEST ===\n")
+    all_pass = True
 
-for test_name, payload, expected_status, expected_pattern in test_cases:
-    if payload == "MANUAL_BOOT_CHECK":
+    for test_name, payload, expected_status, expected_pattern in test_cases:
+        if payload == "MANUAL_BOOT_CHECK":
+            try:
+                import sys
+                from pathlib import Path
+                sys.path.append(str(Path(__file__).parent.parent))
+                from sentinel.version_manifest import AGENT_SIGNATURE
+                result = "PASS" if "v" in AGENT_SIGNATURE else "FAIL"
+                print(f"{'[OK]' if result == 'PASS' else '[FAIL]'} {test_name}: {AGENT_SIGNATURE}")
+            except ImportError:
+                print(f"[FAIL] {test_name}: AGENT_SIGNATURE could not be imported.")
+                all_pass = False
+            continue
+
         try:
-            import sys
-            from pathlib import Path
-            sys.path.append(str(Path(__file__).parent.parent))
-            from sentinel.version_manifest import AGENT_SIGNATURE
-            result = "PASS" if "v" in AGENT_SIGNATURE else "FAIL"
-            print(f"{'[OK]' if result == 'PASS' else '[FAIL]'} {test_name}: {AGENT_SIGNATURE}")
-        except ImportError:
-            print(f"[FAIL] {test_name}: AGENT_SIGNATURE could not be imported.")
+            headers = {}
+            api_key = os.getenv("SENTINEL_API_KEY")
+            if api_key:
+                headers["X-API-Key"] = api_key
+            resp = requests.post(f"{BASE}/execute_trade", json=payload, headers=headers).json()
+            status_ok = resp.get('status') == expected_status
+            pattern_ok = expected_pattern is None or expected_pattern in resp.get('reason', '')
+            passed = status_ok and pattern_ok
+            all_pass = all_pass and passed
+            icon = "[OK]" if passed else "[FAIL]"
+            
+            print(f"{icon} {test_name}")
+            if not passed:
+                print(f"     Expected: status={expected_status} pattern={expected_pattern}")
+                print(f"     Got:      status={resp.get('status')} reason={resp.get('reason','')[:80]}")
+        except requests.exceptions.ConnectionError:
+            print(f"[CRITICAL FAIL] Connection Refused. Is fastapi_sniper.py running on port 8000?")
             all_pass = False
-        continue
+            break
 
-    try:
-        headers = {}
-        api_key = os.getenv("SENTINEL_API_KEY")
-        if api_key:
-            headers["X-API-Key"] = api_key
-        resp = requests.post(f"{BASE}/execute_trade", json=payload, headers=headers).json()
-        status_ok = resp.get('status') == expected_status
-        pattern_ok = expected_pattern is None or expected_pattern in resp.get('reason', '')
-        passed = status_ok and pattern_ok
-        all_pass = all_pass and passed
-        icon = "[OK]" if passed else "[FAIL]"
-        
-        print(f"{icon} {test_name}")
-        if not passed:
-            print(f"     Expected: status={expected_status} pattern={expected_pattern}")
-            print(f"     Got:      status={resp.get('status')} reason={resp.get('reason','')[:80]}")
-    except requests.exceptions.ConnectionError:
-        print(f"[CRITICAL FAIL] Connection Refused. Is fastapi_sniper.py running on port 8000?")
-        all_pass = False
-        break
+    print(f"\n{'ALL TESTS PASSED - WALLS ARE IRONCLAD' if all_pass else 'SOME TESTS FAILED - CHECK LOGS'}")
+    import sys
+    sys.exit(0 if all_pass else 1)
 
-print(f"\n{'ALL TESTS PASSED - WALLS ARE IRONCLAD' if all_pass else 'SOME TESTS FAILED - CHECK LOGS'}")
-import sys
-sys.exit(0 if all_pass else 1)

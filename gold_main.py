@@ -168,6 +168,13 @@ class GoldEngine:
 
         # ── 5. Active Transaction Lifecycle Optimization ──────
         if self.state.is_active:
+            open_pos = self.feeder.get_open_positions()
+            if not any(p.ticket == self.state.ticket for p in open_pos):
+                log.warning(f"Active ticket #{self.state.ticket} missing from MT5 terminal (Hit physical SL/TP). Resyncing state...")
+                self.state.deactivate("TERMINAL_CLOSE")
+                self.state.persist()
+                return
+
             self.state.update_floating_pnl(current_price)
             tp_events = self.tp_mgr.check_and_execute(self.state, current_price)
             for ev in tp_events:
@@ -177,7 +184,8 @@ class GoldEngine:
             if not self.state.flip_pending:
                 flip_sig = should_flip_on_new_bar(
                     current_direction=self.state.direction, current_price=current_price,
-                    all_zones=all_zones, zone_convictions=zone_convictions, detector=self.flip_detector
+                    all_zones=all_zones, zone_convictions=zone_convictions, detector=self.flip_detector,
+                    current_time=times[-1]
                 )
                 if flip_sig:
                     if not self.dry_run:
@@ -198,9 +206,26 @@ class GoldEngine:
         if not tradeable or self.news_gate.is_clear(now).blocked:
             return
 
+        # ── 6.5. Systemic Trend Gate ─────────────────────────
+        def calc_ema(arr, period):
+            alpha = 2 / (period + 1)
+            ema = np.zeros_like(arr)
+            ema[0] = arr[0]
+            for i in range(1, len(arr)):
+                ema[i] = (arr[i] * alpha) + (ema[i - 1] * (1 - alpha))
+            return ema
+
+        ema_50 = calc_ema(closes, cfg.TREND_FILTER_PERIOD)
+        ema_current = ema_50[-1]
+        ema_prev = ema_50[-2]
+        is_strongly_bearish = (current_price < ema_current) and (ema_current < ema_prev)
+
         # ── 7. Structural Signal Interrogation ────────────────
         active_zone = find_active_zone(all_zones, current_price)
         if active_zone is None: return
+
+        if is_strongly_bearish and active_zone.zone_type.value == "DEMAND":
+            return # Skip BUY setup in strongly bearish environment
 
         zone_bd = scored.get(id(active_zone))
         conviction = zone_bd.total if zone_bd else 0.0
