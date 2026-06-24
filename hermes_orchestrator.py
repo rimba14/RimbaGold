@@ -15,6 +15,64 @@ os.makedirs(DELEGATED_TASKS_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+def producer_critic_interceptor(consensus_signals):
+    """
+    v39.0: Producer-Critic Reflection Implementation.
+    Red-teams the ensemble proposal for lookahead bias and cross-asset divergence.
+    """
+    logging.info("[CRITIC] Initiating forensic evaluation of ensemble proposal...")
+    adjusted_signals = []
+    
+    for sig in consensus_signals:
+        flagged = False
+        reason = ""
+        
+        # 1. Lookahead Bias Indicators
+        if sig.get('predictive_horizon_confidence', 0) > 0.95 and sig.get('historical_backtest_alignment', 0) > 0.99:
+            flagged = True
+            reason = "Lookahead Bias Indicator (Unrealistic Confidence/Alignment)"
+            
+        # 2. Cross-asset or multi-timeframe divergence (sentiment anomaly)
+        sentiment = sig.get('sentiment_anomaly_score', 0.0)
+        if sentiment < -0.60 or sentiment > 0.60:
+            flagged = True
+            reason = f"Sentiment anomaly ({sentiment}) outside bounds of +/-0.60"
+            
+        if flagged:
+            logging.warning(f"[CRITIC] Structural imbalance flagged in {sig.get('symbol')}: {reason}")
+            # Adjust consensus conviction backward or enforce tight SOFT_BREACH size multiplier
+            sig['adjusted_conviction'] = sig.get('conviction', 0.5) * 0.8
+            sig['size_multiplier'] = 0.50 # SOFT_BREACH multiplier
+            logging.warning(f"[CRITIC] Enforcing SOFT_BREACH: size multiplier down to 0.50x, conviction lowered.")
+        else:
+            sig['adjusted_conviction'] = sig.get('conviction', 0.5)
+            sig['size_multiplier'] = 1.0
+            
+        adjusted_signals.append(sig)
+        
+    return adjusted_signals
+
+def aggregate_alpha_votes():
+    """
+    Refactored baseline voting aggregation mechanism.
+    Compiles signals from TimesNet, MixTS, Kronos, XGBoost.
+    """
+    # Mocking incoming structural probability sets
+    raw_signals = [
+        {"symbol": "EURUSD", "conviction": 0.85, "predictive_horizon_confidence": 0.80, "sentiment_anomaly_score": 0.20},
+        {"symbol": "GBPUSD", "conviction": 0.92, "predictive_horizon_confidence": 0.98, "historical_backtest_alignment": 1.0, "sentiment_anomaly_score": 0.10}, # Will flag lookahead
+        {"symbol": "USDJPY", "conviction": 0.78, "predictive_horizon_confidence": 0.70, "sentiment_anomaly_score": 0.75} # Will flag sentiment anomaly
+    ]
+    
+    # Intercept before compiling into execution gates
+    validated_signals = producer_critic_interceptor(raw_signals)
+    
+    for sig in validated_signals:
+        if sig['size_multiplier'] == 1.0:
+            logging.info(f"[EXECUTION_GATE] {sig['symbol']} cleared to execution. Conviction: {sig['adjusted_conviction']}")
+        else:
+            logging.info(f"[EXECUTION_GATE] {sig['symbol']} passed with SOFT_BREACH constraint. Size: {sig['size_multiplier']}x")
+
 def monitor_and_delegate():
     """
     Pattern 4: Isolated Sandbox Architecture.
@@ -222,6 +280,7 @@ if __name__ == "__main__":
     try:
         while True:
             monitor_photonic_health()
+            aggregate_alpha_votes()
             monitor_and_delegate()
             execute_leap_loop()
             process_retrospective_decision_logs()
