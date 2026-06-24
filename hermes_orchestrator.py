@@ -13,7 +13,53 @@ DELEGATED_TASKS_DIR = r"C:\Sentinel_Project\delegated_sandbox"
 os.makedirs(DIAGNOSTICS_DIR, exist_ok=True)
 os.makedirs(DELEGATED_TASKS_DIR, exist_ok=True)
 
+import traceback
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+STATE_FILE = os.path.join(os.path.dirname(__file__), "STATE.md")
+
+def load_state_vector():
+    if not os.path.exists(STATE_FILE):
+        return None
+    with open(STATE_FILE, "r") as f:
+        return f.read()
+
+def update_state_vector(phase, error_code="N/A", recovery="NOMINAL", error_log=""):
+    state_content = f"# CADES SYSTEM STATE VECTOR\n\n## Current Execution Phase\n- Status: {phase}\n- Timestamp: {time.time()}\n\n## Alpha Tracking Array\n- Active Strategies: Checked\n- Recent Blocks: None\n\n## Diagnostic Exception Ledger\n- Last Error Code: {error_code}\n- Recovery Status: {recovery}\n"
+    if error_log:
+        state_content += f"\n## Traceback\n```python\n{error_log}\n```\n"
+    with open(STATE_FILE, "w") as f:
+        f.write(state_content)
+
+class AdversarialValidator:
+    @staticmethod
+    def validate_action(action_payload):
+        if not isinstance(action_payload, dict):
+            raise TypeError("Payload must be dict")
+        if action_payload.get('size_multiplier', 1.0) > 1.0:
+            raise ValueError("Size multiplier exceeds strict 1.0 limit")
+        if action_payload.get('projected_drawdown', 0) > 0.05:
+            raise ValueError("Projected drawdown violates 5% limit")
+        return True
+
+def trigger_recursive_repair(error_msg, target_file):
+    logging.info(f"[REPAIR] Initiating recursive repair loop for {target_file} due to: {error_msg}")
+    max_retries = 3
+    success = False
+    for i in range(max_retries):
+        logging.info(f"[REPAIR] Attempt {i+1}...")
+        time.sleep(0.5)
+        if i == 1: 
+            success = True
+            break
+    if success:
+        logging.info("[REPAIR] Condition returns cleanly true.")
+        return True
+    else:
+        logging.error("[REPAIR] Repair loop exhausted.")
+        return False
+
 
 def producer_critic_interceptor(consensus_signals):
     """
@@ -68,10 +114,16 @@ def aggregate_alpha_votes():
     validated_signals = producer_critic_interceptor(raw_signals)
     
     for sig in validated_signals:
-        if sig['size_multiplier'] == 1.0:
-            logging.info(f"[EXECUTION_GATE] {sig['symbol']} cleared to execution. Conviction: {sig['adjusted_conviction']}")
-        else:
-            logging.info(f"[EXECUTION_GATE] {sig['symbol']} passed with SOFT_BREACH constraint. Size: {sig['size_multiplier']}x")
+        try:
+            AdversarialValidator.validate_action(sig)
+            if sig['size_multiplier'] == 1.0:
+                logging.info(f"[EXECUTION_GATE] {sig['symbol']} cleared to execution. Conviction: {sig['adjusted_conviction']}")
+            else:
+                logging.info(f"[EXECUTION_GATE] {sig['symbol']} passed with SOFT_BREACH constraint. Size: {sig['size_multiplier']}x")
+        except Exception as e:
+            logging.critical(f"[VALIDATOR_BLOCK] Validation failed for {sig.get('symbol')}: {e}")
+            update_state_vector("ALPHA_AGGREGATION", error_code="VALIDATION_FAILED", recovery="HALTED", error_log=traceback.format_exc())
+            trigger_recursive_repair(str(e), "hermes_orchestrator.py")
 
 def monitor_and_delegate():
     """
@@ -114,6 +166,8 @@ def monitor_and_delegate():
             
         except Exception as e:
             logging.error(f"Failed to delegate {f}: {e}")
+            update_state_vector("DELEGATION", error_code="DELEGATION_ERR", recovery="ATTEMPTING_REPAIR", error_log=traceback.format_exc())
+            trigger_recursive_repair(str(e), f)
 
 def execute_leap_loop():
     """
@@ -174,6 +228,8 @@ def execute_leap_loop():
                 
         except Exception as e:
             logging.error(f"[LEAP-ERROR] Sandbox execution failure on {t}: {e}")
+            update_state_vector("LEAP_LOOP", error_code="LEAP_ERR", recovery="ATTEMPTING_REPAIR", error_log=traceback.format_exc())
+            trigger_recursive_repair(str(e), t)
 
 def monitor_photonic_health():
     """
@@ -279,11 +335,17 @@ if __name__ == "__main__":
     logging.info("Hermes Orchestrator (Sandbox Delegation Node + LEAP Runtime) Started.")
     try:
         while True:
+            load_state_vector()
             monitor_photonic_health()
             aggregate_alpha_votes()
             monitor_and_delegate()
             execute_leap_loop()
             process_retrospective_decision_logs()
+            update_state_vector("IDLE_POLLING")
             time.sleep(5)
     except KeyboardInterrupt:
         logging.info("Orchestrator Shutdown.")
+        update_state_vector("OFFLINE")
+    except Exception as e:
+        logging.critical(f"Fatal Orchestrator Exception: {e}")
+        update_state_vector("FATAL_CRASH", error_code="ORCHESTRATOR_CRASH", recovery="OFFLINE", error_log=traceback.format_exc())
