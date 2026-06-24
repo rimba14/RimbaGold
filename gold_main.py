@@ -393,7 +393,8 @@ class GoldEngine:
         open_positions = len(self.feeder.get_open_positions())
         preflight = PreflightGate(
             session_state=session, open_positions=open_positions, spread_pts=spread_pts,
-            account_equity=equity, account_balance=balance, news_event=self.news_gate.is_clear(now).event_name, d1_atr=d1_atr
+            account_equity=equity, account_balance=balance, news_event=self.news_gate.is_clear(now).event_name, d1_atr=d1_atr,
+            closes=closes, highs=highs, lows=lows, active_zone=active_zone
         )
         if not preflight.run(plan).all_passed: return
 
