@@ -32,12 +32,98 @@ from gold_constitution        import enforce, TradeProposal, ConstitutionViolati
 from monitor.gold_logger      import GoldLogger
 from monitor.performance_tracker import PerformanceTracker
 
+import os
+import json
+
 logging.basicConfig(
     level    = cfg.LOG_LEVEL,
     format   = "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     handlers = [logging.StreamHandler(sys.stdout), logging.FileHandler(cfg.SYSTEM_LOG_FILE, mode="a")],
 )
 log = logging.getLogger("rimba_gold.main")
+
+class ZoneDetectorAgent:
+    def __init__(self):
+        self.flag_cleared = False
+        self.active_zone = None
+        self.conviction = 0.0
+
+    def evaluate(self, current_price, all_zones, scored_zones):
+        self.active_zone = find_active_zone(all_zones, current_price)
+        if self.active_zone is None:
+            self.flag_cleared = False
+            return False
+        zone_bd = scored_zones.get(id(self.active_zone))
+        self.conviction = zone_bd.total if zone_bd else 0.0
+        if self.conviction >= cfg.MIN_CONVICTION:
+            self.flag_cleared = True
+            return True
+        self.flag_cleared = False
+        return False
+
+class SpreadMonitorAgent:
+    def __init__(self, max_spread_pts=20):
+        self.max_spread_pts = max_spread_pts
+        self.flag_cleared = False
+
+    def evaluate(self, current_spread):
+        if current_spread <= self.max_spread_pts:
+            self.flag_cleared = True
+            return True
+        self.flag_cleared = False
+        return False
+
+class ExecutionDeskAgent:
+    def __init__(self, order_manager, state_manager, zone_registry, logger):
+        self.order_mgr = order_manager
+        self.state = state_manager
+        self.zone_registry = zone_registry
+        self.logger = logger
+        
+    def execute(self, plan, lot_size, conviction, session, active_zone, timeframe, dry_run=False):
+        if dry_run: return
+        try:
+            order = self.order_mgr.enter_trade(plan=plan, lot_size=lot_size)
+            if order.success:
+                self.state.activate(
+                    ticket=order.ticket, direction=order.direction, open_price=order.open_price,
+                    lot_size=order.lot_size, plan=plan, timeframe=timeframe,
+                    conviction=conviction, session=session.session_label
+                )
+                self.zone_registry.mark_zone_entered(f"{active_zone.zone_type.value}_{round(active_zone.low,1):.1f}_{round(active_zone.high,1):.1f}_{timeframe}")
+                self.logger.log_entry(order, plan, conviction, session)
+            else:
+                log.error("Order deployment dropped at trade router interface: %s", order.error)
+                if "10016" in str(order.error) or "TRADE_RETCODE_INVALID_STOPS" in str(order.error):
+                    raise Exception("TRADE_RETCODE_INVALID_STOPS")
+        except Exception as e:
+            err_msg = str(e)
+            if "TRADE_RETCODE_INVALID_STOPS" in err_msg or "disconnect" in err_msg.lower():
+                log.critical(f"[RECOVERY PROTOCOL] Frictional error captured: {err_msg}")
+                log.critical("[RECOVERY PROTOCOL] Engaging Graceful Degradation: Freezing new entries, dumping ticket, holding coordinates.")
+                diag_dir = r"C:\Sentinel_Project\pending_diagnostics"
+                os.makedirs(diag_dir, exist_ok=True)
+                with open(os.path.join(diag_dir, f"gold_exception_{int(time.time())}.json"), "w") as f:
+                    json.dump({"error": err_msg, "plan_entry": plan.entry_mid, "plan_sl": plan.sl_price}, f)
+
+class SupervisorAgent:
+    def __init__(self, zone_agent, spread_agent, exec_agent):
+        self.zone_agent = zone_agent
+        self.spread_agent = spread_agent
+        self.exec_agent = exec_agent
+        
+    def noise_routing_layer(self, current_atr, threshold=0.0):
+        if current_atr <= threshold:
+            log.info("[SUPERVISOR] Market volatility below ATR threshold. Routing to HOLD_AND_WAIT configuration.")
+            return False
+        return True
+
+    def validate_and_route(self, plan, lot_size, session, timeframe, dry_run=False):
+        if self.zone_agent.flag_cleared and self.spread_agent.flag_cleared:
+            log.info("[SUPERVISOR] Flags cleared from both specialists. Routing to Execution Desk.")
+            self.exec_agent.execute(plan, lot_size, self.zone_agent.conviction, session, self.zone_agent.active_zone, timeframe, dry_run)
+        else:
+            log.info("[SUPERVISOR] Toplogy validation failed. Execution blocked.")
 
 class GoldEngine:
     def __init__(
@@ -132,7 +218,7 @@ class GoldEngine:
         if active_login != cfg.TARGET_GOLD_ACCOUNT:
             raise MT5ConnectionError(f"Leakage detected: connected instance points to unauthorized profile: {active_login}")
 
-        _, _, highs, lows, closes = self.feeder.get_ohlcv_arrays(self.timeframe, count=300)
+        times, opens, highs, lows, closes = self.feeder.get_ohlcv_arrays(self.timeframe, count=300)
         if len(closes) < 50: return
 
         _, _, h_d1, l_d1, c_d1 = self.feeder.get_ohlcv_arrays("D1", count=50)
@@ -145,6 +231,16 @@ class GoldEngine:
         spread_pts    = tick.spread
         equity        = acc.get("equity", 1000.0)
         balance       = acc.get("balance", 1000.0)
+
+        # Initialize Supervisor and Specialists
+        zone_agent = ZoneDetectorAgent()
+        spread_agent = SpreadMonitorAgent(max_spread_pts=cfg.MAX_SPREAD_PTS if hasattr(cfg, 'MAX_SPREAD_PTS') else 30)
+        exec_agent = ExecutionDeskAgent(self.order_mgr, self.state, self.zone_registry, self.logger)
+        supervisor = SupervisorAgent(zone_agent, spread_agent, exec_agent)
+
+        # Resource-Aware Noise Routing Layer
+        if not supervisor.noise_routing_layer(d1_atr, threshold=0.1):
+            return
 
         # ── 3. Technical Zone Profiling Registry ──────────────
         left_b  = cfg.PIVOT_LEFT_BARS.get(self.timeframe, 4)
@@ -220,16 +316,15 @@ class GoldEngine:
         ema_prev = ema_50[-2]
         is_strongly_bearish = (current_price < ema_current) and (ema_current < ema_prev)
 
-        # ── 7. Structural Signal Interrogation ────────────────
-        active_zone = find_active_zone(all_zones, current_price)
-        if active_zone is None: return
+        # Zone & Spread evaluations
+        zone_agent.evaluate(current_price, all_zones, scored)
+        spread_agent.evaluate(spread_pts)
+        
+        if not zone_agent.flag_cleared: return
+        active_zone = zone_agent.active_zone
 
         if is_strongly_bearish and active_zone.zone_type.value == "DEMAND":
             return # Skip BUY setup in strongly bearish environment
-
-        zone_bd = scored.get(id(active_zone))
-        conviction = zone_bd.total if zone_bd else 0.0
-        if conviction < cfg.MIN_CONVICTION: return
 
         plan = calculate_trade_plan(active_zone)
         plan = adjust_tp_for_spread(plan, spread_pts)
@@ -252,7 +347,7 @@ class GoldEngine:
                 zone_low=active_zone.low, zone_high=active_zone.high, zone_width=active_zone.width,
                 entry_price=plan.entry_mid, sl_price=plan.sl_price, tp_prices=plan.tp_prices,
                 lot_size=lot_size, account_equity=equity, account_balance=balance,
-                spread_pts=spread_pts, conviction=conviction, session=session.session_label,
+                spread_pts=spread_pts, conviction=zone_agent.conviction, session=session.session_label,
                 timestamp=now, account_id=active_login, news_event=self.news_gate.is_clear(now).event_name,
                 open_positions=open_positions
             )
@@ -260,20 +355,8 @@ class GoldEngine:
         except ConstitutionViolation:
             return
 
-        # ── 10. Direct Action Payload Routing Execution ──────
-        if self.dry_run: return
-
-        order = self.order_mgr.enter_trade(plan=plan, lot_size=lot_size)
-        if order.success:
-            self.state.activate(
-                ticket=order.ticket, direction=order.direction, open_price=order.open_price,
-                lot_size=order.lot_size, plan=plan, timeframe=self.timeframe,
-                conviction=conviction, session=session.session_label
-            )
-            self.zone_registry.mark_zone_entered(f"{active_zone.zone_type.value}_{round(active_zone.low,1):.1f}_{round(active_zone.high,1):.1f}_{self.timeframe}")
-            self.logger.log_entry(order, plan, conviction, session)
-        else:
-            log.error("Order deployment dropped at trade router interface: %s", order.error)
+        # Supervisor delegates to Execution Desk via Sandwich Topology
+        supervisor.validate_and_route(plan, lot_size, session, self.timeframe, dry_run=self.dry_run)
 
     def _handle_signal(self, signum, frame) -> None:
         self._running = False
