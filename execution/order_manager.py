@@ -30,6 +30,21 @@ class OrderManager:
             
         price = tick.ask if plan.direction == "BUY" else tick.bid
         
+        # Ensure TP is mathematically valid against live execution price
+        valid_tp = 0.0
+        if hasattr(plan, 'tp_prices') and plan.tp_prices:
+            valid_tp = plan.tp_prices[0]
+            if plan.direction == "BUY":
+                for tp in plan.tp_prices:
+                    if tp > price + 0.5:
+                        valid_tp = tp
+                        break
+            else:
+                for tp in plan.tp_prices:
+                    if tp < price - 0.5:
+                        valid_tp = tp
+                        break
+        
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
@@ -37,7 +52,7 @@ class OrderManager:
             "type": mt5.ORDER_TYPE_BUY if plan.direction == "BUY" else mt5.ORDER_TYPE_SELL,
             "price": price,
             "sl": float(plan.sl_price),
-            "tp": float(plan.tp_prices[0]) if hasattr(plan, 'tp_prices') and plan.tp_prices else 0.0,
+            "tp": float(valid_tp),
             "deviation": 20,
             "magic": 202601,
             "comment": "Rimba Flip",
@@ -88,4 +103,21 @@ class OrderManager:
         else:
             err = res.comment if res else "Unknown Error"
             log.error(f"[ORDER_MGR] Failed to close #{ticket}: {err}")
+            return False
+
+    def modify_sl_tp(self, ticket: int, symbol: str, sl: float, tp: float) -> bool:
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": symbol,
+            "position": ticket,
+            "sl": float(sl),
+            "tp": float(tp),
+        }
+        res = mt5.order_send(request)
+        if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+            log.info(f"[ORDER_MGR] Modified #{ticket} SL to {sl}, TP to {tp}")
+            return True
+        else:
+            err = res.comment if res else "Unknown Error"
+            log.error(f"[ORDER_MGR] Failed to modify #{ticket}: {err}")
             return False

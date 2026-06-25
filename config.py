@@ -16,11 +16,11 @@ BROKER_SUFFIX        = ""            # System auto-discovery fallback string
 PIVOT_LEFT_BARS   = {"M1": 5, "M5": 4, "M15": 3}
 PIVOT_RIGHT_BARS  = {"M1": 5, "M5": 4, "M15": 3}
 CLUSTER_TOL_ATR   = 0.15             # Zone cluster convergence tolerance
-MIN_ZONE_TOUCHES  = 2                # Valid criteria filter
+MIN_ZONE_TOUCHES  = 3                # Valid criteria filter
 ZONE_MAX_AGE_BARS = {"M1": 240, "M5": 96, "M15": 48}
 
 # Zone width boundaries expressed as multipliers of D1 ATR
-ZONE_MIN_W_ATR   = 0.15              # Prevents micro-clusters from registering as zones
+ZONE_MIN_W_ATR   = 0.18              # Prevents micro-clusters from registering as zones
 ZONE_MAX_W_ATR   = 0.35              # Accommodates true multi-bar institutional zones
 FLIP_COOLDOWN_SEC    = 1800          # Minimum 30-minute lock to prevent rapid chattering
 TREND_FILTER_PERIOD  = 50            # Lookback window for trend identification
@@ -39,9 +39,19 @@ SESSION_WINDOWS = {
 }
 SESSION_TF_RULES = {
     "M1":  ["LONDON", "NY"],
-    "M5":  ["LONDON", "NY", "ASIA"],
-    "M15": ["LONDON", "NY", "ASIA"],
+    "M5":  ["LONDON", "NY"],  # BANNED ASIA SESSION
+    "M15": ["LONDON", "NY"],  # BANNED ASIA SESSION
 }
+
+# ── Renaissance-derived Transaction Cost Gate Floor
+MIN_NET_TP1_PTS = {
+    "M1": 5.0,
+    "M5": 10.0,    # Strictly forces a minimum 10.0 Dollar Point ($10.00 / 1000 terminal points) net profit cushion
+    "M15": 20.0
+}
+
+# ── Signal Consumption / Re-entry Cooldown (Minutes)
+ZONE_REENTRY_COOLDOWN_MIN = {"M1": 30, "M5": 120, "M15": 240}
 
 # ── Spread Gate Limits ───────────────────────────────────────
 MAX_SPREAD_FRAC  = {"M1": 0.35, "M5": 0.20, "M15": 0.12}
