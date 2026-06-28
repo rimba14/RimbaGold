@@ -53,7 +53,7 @@ def run_self_certification():
 def perform_broker_handshake():
     """Phase 3: Broker Handshake."""
     print("\n[PHASE 3] Initiating Broker Handshake...")
-    if not mt5.initialize():
+    if not mt5.initialize(path=r"C:\Program Files\MetaTrader 5\terminal64.exe"):
         print("[CRITICAL ERROR] MetaTrader 5 Initialization FAILED. Cold-boot aborted.")
         sys.exit(1)
         
