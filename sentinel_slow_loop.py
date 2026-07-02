@@ -295,11 +295,6 @@ logging.basicConfig(
     ],
 )
 
-# -- XGBoost Resurrection (v23.6) -----------------------------------------------
-XGB_MODEL_PATH = PROJECT_ROOT / "data" / "sentinel_xgb_model.json"
-_XGB_MODEL = None
-if XGB_MODEL_PATH.exists():
-
 # -- TabFM Zero-Shot Oracle (v33.0) ---------------------------------------------
 try:
     from tabfm import TabFMClassifier, tabfm_v1_0_0_pytorch as tabfm_v1_0_0
@@ -309,6 +304,11 @@ try:
 except Exception as e:
     logging.error(f"[BOOT] Failed to load TabFM Oracle: {e}")
     _TABFM_CLF = None
+
+# -- XGBoost Resurrection (v23.6) -----------------------------------------------
+XGB_MODEL_PATH = PROJECT_ROOT / "data" / "sentinel_xgb_model.json"
+_XGB_MODEL = None
+if XGB_MODEL_PATH.exists():
     try:
         _XGB_MODEL = xgb.Booster()
         _XGB_MODEL.load_model(str(XGB_MODEL_PATH))
