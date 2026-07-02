@@ -299,6 +299,16 @@ logging.basicConfig(
 XGB_MODEL_PATH = PROJECT_ROOT / "data" / "sentinel_xgb_model.json"
 _XGB_MODEL = None
 if XGB_MODEL_PATH.exists():
+
+# -- TabFM Zero-Shot Oracle (v33.0) ---------------------------------------------
+try:
+    from tabfm import TabFMClassifier, tabfm_v1_0_0_pytorch as tabfm_v1_0_0
+    _TABFM_MODEL = tabfm_v1_0_0.load(model_type="classification")
+    _TABFM_CLF = TabFMClassifier(model=_TABFM_MODEL)
+    logging.info("[BOOT] TabFM Foundation Model loaded successfully (Classification Preset).")
+except Exception as e:
+    logging.error(f"[BOOT] Failed to load TabFM Oracle: {e}")
+    _TABFM_CLF = None
     try:
         _XGB_MODEL = xgb.Booster()
         _XGB_MODEL.load_model(str(XGB_MODEL_PATH))
@@ -335,6 +345,61 @@ def get_xgb_prediction(features_df):
     except Exception as e:
         logging.error(f"[XGB_INFERENCE] Error: {e}. Falling back to 0.500.")
         return 0.500000
+
+def get_tabfm_prediction(features_df, xgb_fallback_prob):
+    """v33.0: Zero-Shot TabFM Oracle with In-Context Rolling Frame"""
+    if _TABFM_CLF is None:
+        return xgb_fallback_prob
+        
+    try:
+        # Microstructure Veto: Check for high NaNs or zero variance
+        numeric_df = features_df.select_dtypes(include=[np.number])
+        nan_density = numeric_df.isna().mean().mean()
+        if nan_density > 0.10: # >10% NaNs
+            logging.warning(f"[TabFM_VETO] High NaN density ({nan_density:.2f}). Degrading to XGBoost baseline.")
+            return xgb_fallback_prob
+            
+        variances = numeric_df.var()
+        if (variances == 0).any():
+            logging.warning(f"[TabFM_VETO] Zero variance features detected. Degrading to XGBoost baseline.")
+            return xgb_fallback_prob
+            
+        # Hard-clamp the rolling context window to max 300 rows (Memory/Token Guardrail)
+        rolling_df = numeric_df.tail(300).copy()
+        
+        # We need at least a few rows for in-context learning
+        if len(rolling_df) < 5:
+            return xgb_fallback_prob
+            
+        # Construct y_train: 1 if next bar's close > current close, else 0
+        if 'close' in rolling_df.columns:
+            target_col = 'close'
+        else:
+            target_col = rolling_df.columns[0] # Fallback to first column if 'close' is missing
+            
+        y_all = (rolling_df[target_col].shift(-1) > rolling_df[target_col]).astype(int)
+        
+        # X_train is everything except the last row (which has no target)
+        X_train = rolling_df.iloc[:-1]
+        y_train = y_all.iloc[:-1]
+        
+        # X_test is the active live bar (last row)
+        X_test = rolling_df.iloc[[-1]]
+        
+        # Fill remaining NaNs just in case
+        X_train = X_train.fillna(0)
+        X_test = X_test.fillna(0)
+        
+        # Zero-shot forward pass
+        _TABFM_CLF.fit(X_train, y_train)
+        tabfm_prob = _TABFM_CLF.predict_proba(X_test)[0][1]
+        
+        return float(tabfm_prob)
+        
+    except Exception as e:
+        logging.error(f"[TabFM_INFERENCE] Error: {e}. Falling back to XGBoost.")
+        return xgb_fallback_prob
+
 # -- Contextual Routing - Phase 2 Constitution (v17.9) ------------------
 # CONSTITUTION DIRECTIVE: Route HIGH-VOLATILITY CRYPTO -> Groq (Gemma)
 #                         Route FOREX + INDICES + METALS -> Gemini (macro-synthesis)
@@ -1580,11 +1645,19 @@ def run_inference_for_symbol(symbol: str, prep_data: dict):
             else:
                 k_prob = 0.500
             
-            x_prob = get_xgb_prediction(df_ml)
+            # Zero-Shot TabFM Execution (Phase 2 & 3)
+            x_prob = get_xgb_prediction(df_ml) # Baseline for gracefully degraded Fallback
+            tabfm_p = get_tabfm_prediction(df_ml, xgb_fallback_prob=x_prob)
+            
+            # DIRECTIVE TABFM: Dead-Zone Veto [0.45, 0.55]
+            if 0.45 <= tabfm_p <= 0.55:
+                logging.warning(f"[{symbol}] [TABFM_DEAD_ZONE] tabfm_prob {tabfm_p:.4f} is in the 0.45-0.55 Dead-Zone. VETOING SIGNAL.")
+                return
 
             scores_raw = {
                 "kronos": k_prob,
-                "xgb": x_prob
+                "xgb": x_prob,
+                "tabfm": tabfm_p
             }
             
             # RL Inference (if not quarantined)
@@ -1613,7 +1686,7 @@ def run_inference_for_symbol(symbol: str, prep_data: dict):
                     del active_scores[agent_name]
             
             # Weight Allocation & Evolutionary Consensus Blending
-            base_weights = {"kronos": 0.4, "xgb": 0.3, "ddqn": 0.3}
+            base_weights = {"kronos": 0.3, "xgb": 0.2, "tabfm": 0.2, "ddqn": 0.3}
             
             # 1. Proposal A: ACCURACY_WEIGHTED
             p_accuracy = 0.500
@@ -1865,6 +1938,7 @@ def run_inference_for_symbol(symbol: str, prep_data: dict):
 
 
         safe_xgb = float(x_prob) if not np.isnan(float(x_prob)) else 0.5000
+        safe_tabfm = float(tabfm_p) if 'tabfm_p' in locals() and not np.isnan(float(tabfm_p)) else safe_xgb
         safe_kronos = float(k_prob) if not np.isnan(float(k_prob)) else 0.5000
         safe_faiss = _safe_extract_with_lookback(symbol, float(max_sim) if max_sim is not None else None, 0.0000, "faiss_similarity")
         raw_sent = m_state.get("global_macro_sentiment", 0.5)
@@ -1888,6 +1962,7 @@ def run_inference_for_symbol(symbol: str, prep_data: dict):
             "wasserstein_state": w_dist_norm, # Use numeric distance
             "hmm_state": wasserstein_state,   # Use string state
             "wasserstein_routing_probs": label_probs, # soft weights
+            "tabfm_prob": safe_tabfm,
             "xgb_p": safe_xgb,
             "xgboost_prob": safe_xgb,
             "kronos_p": safe_kronos,

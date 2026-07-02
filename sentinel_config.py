@@ -317,8 +317,7 @@ BASE_WATCHLIST = [
     
     # Forex & Macro (25)
     "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "NZDUSD", "USDCAD", "EURGBP", "EURJPY", "GBPJPY",
-    "EURCHF", "AUDJPY", "NZDJPY", "CHFJPY", "EURAUD", "GBPAUD", "USDMXN", "USDZAR", "USDTRY", "EURNOK",
-    "EURSEK", "USDCNH", "USDSGD", "USDHKD", "EURPLN",
+    "EURCHF", "AUDJPY", "NZDJPY", "CHFJPY", "EURAUD", "GBPAUD",
     
     # Indices & Commodities (10)
     "SP500", "NAS100", "US30", "GER40", "HK50", "US2000", "FRA40", "XAUUSD", "XAGUSD", "CL-OIL",

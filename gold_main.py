@@ -1,6 +1,6 @@
 # ============================================================
-# RIMBA GOLD - gold_main.py (PRODUCTION BUILD v1.1.0)
-# Master orchestration loop with absolute risk routing lock.
+# RIMBA GOLD - gold_main.py (PRODUCTION BUILD v1.2.0)
+# Multi-Asset Orchestration Update (NAS100 + XAUUSD)
 # ============================================================
 from __future__ import annotations
 import logging
@@ -12,6 +12,14 @@ from typing import Optional
 import numpy as np
 
 import config as cfg
+
+# Pre-parse the symbol to inject configuration immediately before logging setups
+import sys
+_sym = "XAUUSD"
+for i, arg in enumerate(sys.argv):
+    if arg == "--symbol" and i + 1 < len(sys.argv):
+        _sym = sys.argv[i+1]
+cfg.apply_profile(_sym)
 from core.gold_feeder     import GoldFeeder, MT5ConnectionError
 from core.session_clock   import get_session_state
 from core.atr_sampler     import get_d1_atr
@@ -44,7 +52,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("rimba_gold.main")
 
-STATE_FILE = os.path.join(os.path.dirname(__file__), "STATE.md")
+STATE_FILE = os.path.join(os.path.dirname(__file__), f"STATE_{cfg.SYMBOL}.md")
 
 def load_state_vector():
     if not os.path.exists(STATE_FILE):
@@ -396,7 +404,10 @@ class GoldEngine:
             account_equity=equity, account_balance=balance, news_event=self.news_gate.is_clear(now).event_name, d1_atr=d1_atr,
             closes=closes, highs=highs, lows=lows, active_zone=active_zone
         )
-        if not preflight.run(plan).all_passed: return
+        preflight_res = preflight.run(plan)
+        if not preflight_res.all_passed:
+            print(f"Preflight Blocked: {preflight_res.failed_gates}")
+            return
 
         # ── 9. Structural Constitutional Enforcement Check ────
         try:
@@ -428,6 +439,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RIMBA GOLD trading engine")
     parser.add_argument("--timeframe", default=cfg.PRIMARY_TF, choices=["M1", "M5", "M15"])
     parser.add_argument("--dry-run",  action="store_true")
+    parser.add_argument("--symbol", default="XAUUSD", choices=["XAUUSD", "NAS100", "GER40", "DJ30", "HK50"])
     args = parser.parse_args()
 
     engine = GoldEngine(timeframe=args.timeframe, dry_run=args.dry_run)

@@ -1570,6 +1570,8 @@ class SentinelProfitManager:
         v25.0: Instrument-aware ATR floor.
         BUG FIX: raw_atr=0.0010 was a forex constant — useless for BTCUSD.
         """
+        return # [USER REQUEST] Disabled to allow unified_loop to run completely naked trades without forced SL/TP
+
         if tick is None:
             tick = mt5.symbol_info_tick(pos.symbol)
         if info is None:

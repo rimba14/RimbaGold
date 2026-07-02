@@ -1,6 +1,6 @@
 # ============================================================
-# RIMBA GOLD - config.py (PRODUCTION BUILD v1.1.0)
-# Single source of truth for all strategy parameters.
+# RIMBA GOLD - config.py (PRODUCTION BUILD v1.2.0)
+# Multi-Asset Orchestration Update (NAS100 + XAUUSD)
 # ============================================================
 from dataclasses import dataclass, field
 from typing import List
@@ -88,5 +88,59 @@ SYSTEM_LOG_FILE      = "logs/gold_system.log"
 # ── Decoupled Telemetry Port Allocations ──────────────────────
 DASHBOARD_PORT       = 8001          # Clean port separation from CADES (8000)
 DASHBOARD_HOST       = "0.0.0.0"
-VERSION              = "1.1.0"
+VERSION              = "1.2.0"
 SYSTEM_NAME          = "RIMBA-GOLD"
+
+def apply_profile(symbol: str):
+    global SYMBOL, SESSION_TF_RULES, MAX_SPREAD_HARD, TRADE_LOG_FILE, SYSTEM_LOG_FILE, SYSTEM_NAME
+    SYMBOL = symbol
+    if symbol == "NAS100":
+        # Lock NAS100 strictly to NY Session due to erratic pre-market behavior
+        SESSION_TF_RULES = {
+            "M1":  ["NY"],
+            "M5":  ["NY"],
+            "M15": ["NY"],
+        }
+        # Tighter physical spread limit for indices
+        MAX_SPREAD_HARD  = {"M1": 2.5,  "M5": 3.5,  "M15": 5.0}
+        TRADE_LOG_FILE   = "logs/nas_trades.jsonl"
+        SYSTEM_LOG_FILE  = "logs/nas_system.log"
+        SYSTEM_NAME      = "RIMBA-NAS100"
+    elif symbol == "GER40":
+        # Lock GER40 to London and NY Sessions
+        SESSION_TF_RULES = {
+            "M1":  ["LONDON", "NY"],
+            "M5":  ["LONDON", "NY"],
+            "M15": ["LONDON", "NY"],
+        }
+        MAX_SPREAD_HARD  = {"M1": 1.5,  "M5": 2.5,  "M15": 4.0}
+        TRADE_LOG_FILE   = "logs/ger_trades.jsonl"
+        SYSTEM_LOG_FILE  = "logs/ger_system.log"
+        SYSTEM_NAME      = "RIMBA-GER40"
+    elif symbol == "DJ30":
+        # Lock DJ30 strictly to NY Session due to its native volume
+        SESSION_TF_RULES = {
+            "M1":  ["NY"],
+            "M5":  ["NY"],
+            "M15": ["NY"],
+        }
+        MAX_SPREAD_HARD  = {"M1": 2.5,  "M5": 3.5,  "M15": 5.0}
+        TRADE_LOG_FILE   = "logs/us30_trades.jsonl"
+        SYSTEM_LOG_FILE  = "logs/us30_system.log"
+        SYSTEM_NAME      = "RIMBA-DJ30"
+    elif symbol == "HK50":
+        # Lock HK50 strictly to the Asian Session
+        SESSION_TF_RULES = {
+            "M1":  ["ASIA"],
+            "M5":  ["ASIA"],
+            "M15": ["ASIA"],
+        }
+        # HK50 has wider spreads due to liquidity dynamics
+        MAX_SPREAD_HARD  = {"M1": 5.0,  "M5": 8.0,  "M15": 12.0}
+        TRADE_LOG_FILE   = "logs/hk50_trades.jsonl"
+        SYSTEM_LOG_FILE  = "logs/hk50_system.log"
+        SYSTEM_NAME      = "RIMBA-HK50"
+    elif symbol == "XAUUSD":
+        TRADE_LOG_FILE   = "logs/gold_trades.jsonl"
+        SYSTEM_LOG_FILE  = "logs/gold_system.log"
+        SYSTEM_NAME      = "RIMBA-GOLD"

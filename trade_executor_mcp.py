@@ -93,6 +93,12 @@ def execute_trade(symbol, conviction, hmm_regime):
         
         k_data = k_item.data.iloc[-1]
         base_atr = float(k_data.get('base_atr', 0.0))
+        
+        # Telemetry Logging for Multi-Modal Payload
+        xgb_p = float(k_data.get('xgboost_prob', 0.5))
+        tabfm_p = float(k_data.get('tabfm_prob', 0.5))
+        logging.info(f"[{symbol}] Multi-Modal Payload -> XGBoost: {xgb_p:.4f} | TabFM: {tabfm_p:.4f}")
+        
         if base_atr <= 0:
             # Fallback to manual calculation if cache is empty
             from gitagent_sigproc import get_m15_dataframe

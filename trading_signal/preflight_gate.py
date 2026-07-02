@@ -57,12 +57,4 @@ class PreflightGate:
             out.all_passed = False
             out.failed_gates.append("VOLATILITY_CONTRACTION_FAILED (VCS)")
             
-        # 2. Geometric Confirmation Check (LL-HL Structures)
-        ema_21 = self._calc_ema(self.closes, 21)
-        darvas_top = self.active_zone.high if self.active_zone else float('inf')
-        
-        if current_close <= ema_21 or current_close <= darvas_top:
-            out.all_passed = False
-            out.failed_gates.append("GEOMETRIC_CONFIRMATION_FAILED (Pivot/Darvas)")
-            
         return out

@@ -23,7 +23,8 @@ class OrderManager:
         
         symbol = self.feeder.symbol
         tick = mt5.symbol_info_tick(symbol)
-        if not tick:
+        info = mt5.symbol_info(symbol)
+        if not tick or not info:
             out.success = False
             out.error = "No tick available"
             return out
@@ -36,8 +37,8 @@ class OrderManager:
             "volume": float(lot_size),
             "type": mt5.ORDER_TYPE_BUY if plan.direction == "BUY" else mt5.ORDER_TYPE_SELL,
             "price": price,
-            "sl": float(plan.sl_price),
-            "tp": float(plan.tp_prices[0]) if hasattr(plan, 'tp_prices') and plan.tp_prices else 0.0,
+            "sl": round(float(plan.sl_price), info.digits),
+            "tp": round(float(plan.tp_prices[0]), info.digits) if hasattr(plan, 'tp_prices') and plan.tp_prices else 0.0,
             "deviation": 20,
             "magic": 202601,
             "comment": "Rimba Flip",
