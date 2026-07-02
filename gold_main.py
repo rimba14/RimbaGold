@@ -398,15 +398,21 @@ class GoldEngine:
         if lot_size <= 0: return
 
         # ── 8. Pre-Flight Verification Gate Sandbox ───────────
-        open_positions = len(self.feeder.get_open_positions())
+        open_positions_mt5 = len(self.feeder.get_open_positions())
+
+        if self.state.is_active or open_positions_mt5 > 0:
+            log.info("Entry blocked by Dual Fence: State active token = %s | MT5 live position count = %d", 
+                      self.state.is_active, open_positions_mt5)
+            return  # Decline entry propagation
+
         preflight = PreflightGate(
-            session_state=session, open_positions=open_positions, spread_pts=spread_pts,
+            session_state=session, open_positions=open_positions_mt5, spread_pts=spread_pts,
             account_equity=equity, account_balance=balance, news_event=self.news_gate.is_clear(now).event_name, d1_atr=d1_atr,
             closes=closes, highs=highs, lows=lows, active_zone=active_zone
         )
         preflight_res = preflight.run(plan)
         if not preflight_res.all_passed:
-            print(f"Preflight Blocked: {preflight_res.failed_gates}")
+            log.info(f"Preflight Blocked: {preflight_res.failed_gates}")
             return
 
         # ── 9. Structural Constitutional Enforcement Check ────
@@ -418,7 +424,7 @@ class GoldEngine:
                 lot_size=lot_size, account_equity=equity, account_balance=balance,
                 spread_pts=spread_pts, conviction=zone_agent.conviction, session=session.session_label,
                 timestamp=now, account_id=active_login, news_event=self.news_gate.is_clear(now).event_name,
-                open_positions=open_positions
+                open_positions=open_positions_mt5
             )
             enforce(proposal)
         except ConstitutionViolation:

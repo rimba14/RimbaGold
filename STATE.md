@@ -22,5 +22,4 @@ Traceback (most recent call last):
     print(f"Preflight Blocked: {preflight_res.failed_gates}")
     ^^^^^^^^^^^^^^^^
 AttributeError: 'GoldLogger' object has no attribute 'info'
-
 ```
