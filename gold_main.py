@@ -27,9 +27,9 @@ from zone.zone_detector   import build_zones, find_active_zone
 from zone.zone_registry   import ZoneRegistry
 from zone.tp_calculator   import calculate_trade_plan, adjust_tp_for_spread
 from zone.flip_detector   import FlipDetector, should_flip_on_new_bar
-from signal.conviction_scorer import score_zones, MIN_CONVICTION
-from signal.preflight_gate    import PreflightGate
-from signal.news_gate         import NewsGate
+from trading_signal.conviction_scorer import score_zones, MIN_CONVICTION
+from trading_signal.preflight_gate    import PreflightGate
+from trading_signal.news_gate         import NewsGate
 from state.position_state     import GoldPositionState
 from risk.lot_sizer           import compute_lot_size, scale_down_for_drawdown
 from risk.drawdown_guard      import DrawdownGuard

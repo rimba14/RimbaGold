@@ -7,10 +7,10 @@ from typing import List
 
 # ── Instrument & Absolute Routing Lock ───────────────────────
 SYMBOL               = "XAUUSD"
-TARGET_GOLD_ACCOUNT  = 25653715
+TARGET_GOLD_ACCOUNT  = 23535174
 TIMEFRAMES           = ["M1", "M5", "M15"]
 PRIMARY_TF           = "M5"          # Default execution timeframe
-BROKER_SUFFIX        = ""            # System auto-discovery fallback string
+BROKER_SUFFIX        = "+"            # System auto-discovery fallback string
 
 # ── Zone Detection Math ──────────────────────────────────────
 PIVOT_LEFT_BARS   = {"M1": 5, "M5": 4, "M15": 3}

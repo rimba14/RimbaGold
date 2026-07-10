@@ -1,18 +1,18 @@
 {
     "session": "NEW_YORK",
     "regime": "RANGE",
-    "open_positions": 9,
+    "open_positions": 0,
     "cluster_exposure": {
         "CRYPTO": 0.15,
         "EQUITY_INDEX": 0.4,
         "FX": 0.45
     },
-    "drawdown_today": 84.28,
+    "drawdown_today": 0.0,
     "active_directives": [
         "DIRECTIVE ZETA",
         "EPISTEMIC_GATE",
         "AMENDMENT XXV"
     ],
-    "hardware_latency_ms": 1.16,
-    "timestamp": 1782142625.9596212
+    "hardware_latency_ms": 1.25,
+    "timestamp": 1783702655.654252
 }
