@@ -33,6 +33,7 @@ from trading_signal.news_gate         import NewsGate
 from state.position_state     import GoldPositionState
 from risk.lot_sizer           import compute_lot_size, scale_down_for_drawdown
 from risk.drawdown_guard      import DrawdownGuard
+from risk.streak_guard        import StreakCooldownGuard
 from execution.order_manager  import OrderManager
 from execution.tp_manager     import TPManager
 from execution.flip_executor  import FlipExecutor
@@ -213,6 +214,7 @@ class GoldEngine:
         self.zone_registry = ZoneRegistry()
         self.news_gate     = NewsGate()
         self.dd_guard      = DrawdownGuard()
+        self.streak_guard  = StreakCooldownGuard(max_consecutive_losses=2, cooldown_minutes=15, recovery_ladder=[0.50, 0.75, 1.00])
         self.logger        = GoldLogger()
         self.perf          = PerformanceTracker()
 
@@ -326,6 +328,12 @@ class GoldEngine:
         # ── 4. Capital Protection Drawdown Guard ──────────────
         self.dd_guard.update_equity(equity, balance, self.dd_guard.state.daily_pnl_usd)
         tradeable, dd_reason = self.dd_guard.can_trade()
+        
+        streak_tradeable, streak_reason = self.streak_guard.can_trade(spread_pts, cfg.MAX_SPREAD_PTS if hasattr(cfg, 'MAX_SPREAD_PTS') else 30)
+        if not streak_tradeable:
+            tradeable = False
+            dd_reason = streak_reason
+            log.info(f"[STREAK_COOLDOWN_VETO] Trade blocked by Streak Guard: {streak_reason}")
 
         # ── 5. Active Transaction Lifecycle Optimization ──────
         if self.state.is_active:
@@ -340,7 +348,9 @@ class GoldEngine:
             tp_events = self.tp_mgr.check_and_execute(self.state, current_price)
             for ev in tp_events:
                 self.logger.log_tp_hit(ev, self.state)
-                self.dd_guard.add_closed_pnl(ev.profit_pts * ev.close_volume * 100.0)
+                closed_pnl = ev.profit_pts * ev.close_volume * 100.0
+                self.dd_guard.add_closed_pnl(closed_pnl)
+                self.streak_guard.record_trade_result(closed_pnl)
 
             if not self.state.flip_pending:
                 flip_sig = should_flip_on_new_bar(
@@ -394,7 +404,11 @@ class GoldEngine:
         plan = calculate_trade_plan(active_zone)
         plan = adjust_tp_for_spread(plan, spread_pts)
 
-        lot_size = self.dd_guard.apply_scale(compute_lot_size(equity=equity, entry_price=plan.entry_mid, sl_price=plan.sl_price).lot_size)
+        calc_lot = compute_lot_size(equity=equity, entry_price=plan.entry_mid, sl_price=plan.sl_price).lot_size
+        dd_scaled = self.dd_guard.apply_scale(calc_lot)
+        final_lots = self.streak_guard.apply_ramp(dd_scaled)
+        lot_size = max(final_lots, 0.01)
+
         if lot_size <= 0: return
 
         # ── 8. Pre-Flight Verification Gate Sandbox ───────────
@@ -445,7 +459,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RIMBA GOLD trading engine")
     parser.add_argument("--timeframe", default=cfg.PRIMARY_TF, choices=["M1", "M5", "M15"])
     parser.add_argument("--dry-run",  action="store_true")
-    parser.add_argument("--symbol", default="XAUUSD", choices=["XAUUSD", "NAS100", "GER40", "DJ30", "HK50"])
+    parser.add_argument("--symbol", default="XAUUSD", choices=["XAUUSD", "XAUUSD+", "NAS100", "GER40", "DJ30", "HK50"])
     args = parser.parse_args()
 
     engine = GoldEngine(timeframe=args.timeframe, dry_run=args.dry_run)
